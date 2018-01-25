@@ -1,0 +1,109 @@
+load(
+  /* The piechart and paging grid need different paging info values. */
+  local!chartPagingInfo: a!pagingInfo(
+    startIndex: 1,
+    batchSize: -1,
+    sort: a!sortInfo(
+      field: "department",
+      ascending: true
+    )
+  ),
+  local!gridPagingInfo: a!pagingInfo(
+    startIndex: 1,
+    batchSize: 20,
+    sort: a!sortInfo(
+      field: "title",
+      ascending: true
+    )
+  ),
+  local!selectedDepartment,
+  with(
+    local!chartDatasubset: a!queryEntity(
+      entity: cons!EMPLOYEE_ENTITY,
+      query: a!query(
+        /* Aggregates data by department for the chart */
+        aggregation: a!queryAggregation(
+          aggregationColumns: {
+            a!queryAggregationColumn(field: "department", isGrouping: true),
+            a!queryAggregationColumn(field: "id", aggregationFunction: "COUNT"),
+          }
+        ),
+        pagingInfo: local!chartPagingInfo
+      )
+    ),
+    local!gridDatasubset: if(
+      isnull(local!selectedDepartment),
+      {},
+      /* Returns a set of employees, filtered by department */
+      a!queryEntity(
+        entity: cons!EMPLOYEE_ENTITY,
+        query: a!query(
+          selection: a!querySelection(
+            columns: {
+              a!queryColumn(field: "firstName"),
+              a!queryColumn(field: "lastName"),
+              a!queryColumn(field: "title")
+            }
+          ),
+          filter: a!queryFilter(field: "department", operator: "=", value: local!selectedDepartment),
+          pagingInfo: local!gridPagingInfo
+        )
+      )
+    ),
+    a!sectionLayout(
+      contents:{
+        a!pieChartField(
+          series: a!forEach(
+            items: local!chartDatasubset.data,
+            expression: a!chartSeries(
+              label: fv!item.department,
+              data: fv!item.id,
+              links: a!dynamicLink(value: fv!item.department, saveInto: local!selectedDepartment)
+            )
+          ),
+          showWhen: isnull(local!selectedDepartment)
+        ),
+        a!linkField(
+          labelPosition: "COLLAPSED",
+          links: a!dynamicLink(
+            label: "Back to Chart",
+            value: null,
+            saveInto: {
+              local!selectedDepartment,
+              /* 
+               * Reset the startIndex back to the first page when the user
+               * changes the filter. Otherwise, the grid could error out.           
+               */
+              a!save(local!gridPagingInfo.startIndex, 1)
+            },
+           showWhen:not( isnull(local!selectedDepartment) )
+          )
+        ),
+        a!gridField(
+          label: local!selectedDepartment & " Employees",
+          totalCount: local!gridDatasubset.totalCount,
+          columns: {
+            a!gridTextColumn(
+              label: "First Name", 
+              field: "firstName", 
+              data: index(local!gridDatasubset.data, "firstName", {})
+            ),
+            a!gridTextColumn(
+              label: "Last Name", 
+              field: "lastName", 
+              data: index(local!gridDatasubset.data, "lastName", {})
+            ),
+            a!gridTextColumn(
+              label: "Title", 
+              field: "title", 
+              data: index(local!gridDatasubset.data, "title", {})
+            )
+          },
+          value: local!gridPagingInfo,
+          saveInto: local!gridPagingInfo,
+          showWhen: not( isnull( local!selectedDepartment) )
+       )
+      }
+    )
+  )
+)
